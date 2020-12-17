@@ -1,0 +1,14 @@
+# Python Cached Files
+*.pyc
+*.pyd
+
+# Local Dependencies (Non-Distributable)
+Dependencies/*
+!Dependencies/Prism*.zip
+Prism/PythonLibs
+Prism/Python37
+Prism/Tools
+
+# Other
+~$*.xlsx
+*.log

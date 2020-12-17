@@ -1,0 +1,1 @@
+app.system('start "" "PRISMLIBS/Python37/Prism Project Browser.exe" "PRISMROOT/Plugins/Apps/Photoshop/Scripts/Prism_Photoshop_MenuTools.py" ProjectBrowser')

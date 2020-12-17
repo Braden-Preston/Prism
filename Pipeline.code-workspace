@@ -1,0 +1,37 @@
+{
+	"folders": [
+		{
+			"name": "Repository (Root)",
+			"path": "."
+		},
+		{
+			"name": "Dependencies",
+			"path": "Dependencies"
+		},
+		{
+			"name": "ProjectFiles",
+			"path": "Prism\\ProjectFiles"
+		},
+		{
+			"name": "Scripts",
+			"path": "Prism\\Scripts"
+		},
+		{
+			"name": "Apps",
+			"path": "Prism\\Plugins\\Apps"
+		},
+		{
+			"name": "Custom",
+			"path": "Prism\\Plugins\\Custom"
+		},
+		{
+			"name": "ProjectManagers",
+			"path": "Prism\\Plugins\\ProjectManagers"
+		},
+		{
+			"name": "RenderfarmManagers",
+			"path": "Prism\\Plugins\\RenderfarmManagers"
+		}
+	],
+	"settings": {}
+}
