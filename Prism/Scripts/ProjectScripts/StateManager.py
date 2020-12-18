@@ -337,16 +337,12 @@ class %s(QWidget, %s.%s, %s.%sClass):
         except:
             pass
 
-        rPrjPaths = self.core.getConfig(cat="recent_projects", dft=[])
-        for prjPath in rPrjPaths:
-            if not prjPath or not self.core.isStr(prjPath) or prjPath == self.core.prismIni:
-                continue
+        recentProjects = self.core.projects.getRecentProjects()
+        for project in recentProjects:
+            rpAct = QAction(project["name"], self)
+            rpAct.setToolTip(project["configPath"])
 
-            rpName = self.core.getConfig("globals", "project_name", configPath=prjPath)
-            rpAct = QAction(rpName, self)
-            rpAct.setToolTip(prjPath)
-
-            rpAct.triggered.connect(lambda y=None, x=prjPath: self.core.changeProject(x))
+            rpAct.triggered.connect(lambda y=None, x=project["configPath"]: self.core.changeProject(x))
             self.menuRecentProjects.addAction(rpAct)
 
         if self.menuRecentProjects.isEmpty():
@@ -425,6 +421,20 @@ class %s(QWidget, %s.%s, %s.%sClass):
 
         for i in self.collapsedFolders:
             i.setExpanded(False)
+
+    @err_catcher(name=__name__)
+    def selectState(self, state):
+        if not state:
+            return
+
+        if state.ui.listType == "Import":
+            listwidget = self.tw_import
+        else:
+            listwidget = self.tw_export
+
+        self.setListActive(listwidget)
+        listwidget.setCurrentItem(state)
+        self.showState()
 
     @err_catcher(name=__name__)
     def showState(self):
@@ -697,6 +707,7 @@ class %s(QWidget, %s.%s, %s.%sClass):
                 lambda x=None, typeName=typeName: self.createState(typeName, parentState, setActive=True)
             )
 
+        getattr(self.core.appPlugin, "sm_openStateFromNode", lambda x, y: None)(self, createMenu)
         return createMenu
 
     @err_catcher(name=__name__)
@@ -804,6 +815,7 @@ class %s(QWidget, %s.%s, %s.%sClass):
         stateData=None,
         setActive=False,
         renderer=None,
+        openProductsBrowser=None,
     ):
         logger.debug("create state: %s" % statetype)
         if statetype not in self.stateTypes:
@@ -812,22 +824,26 @@ class %s(QWidget, %s.%s, %s.%sClass):
         item = QTreeWidgetItem([statetype])
         item.ui = self.stateTypes[statetype]()
 
-        if node is None:
-            if importPath is None:
-                if renderer is None:
-                    stateSetup = item.ui.setup(
-                        item, self.core, self, stateData=stateData
-                    )
-                else:
-                    stateSetup = item.ui.setup(
-                        item, self.core, self, stateData=stateData, renderer=renderer
-                    )
-            else:
-                stateSetup = item.ui.setup(
-                    item, self.core, self, importPath=importPath, stateData=stateData
-                )
+        kwargs = {
+            "state": item,
+            "core": self.core,
+            "stateManager": self,
+        }
+
+        if node:
+            kwargs["node"] = node
         else:
-            stateSetup = item.ui.setup(item, self.core, self, node)
+            kwargs["stateData"] = stateData
+            if importPath:
+                kwargs["importPath"] = importPath
+            else:
+                if renderer:
+                    kwargs["renderer"] = renderer
+
+        if openProductsBrowser is not None:
+            kwargs["openProductsBrowser"] = openProductsBrowser
+
+        stateSetup = item.ui.setup(**kwargs)
 
         if stateSetup is False:
             return
@@ -941,6 +957,9 @@ class %s(QWidget, %s.%s, %s.%sClass):
             item = self.activeList.currentItem()
         else:
             item = state
+
+        if not item:
+            return
 
         for i in range(item.childCount()):
             self.deleteState(item.child(i))

@@ -257,6 +257,14 @@ class PathManager(object):
         return os.path.abspath(basePath)
 
     @err_catcher(name=__name__)
+    def getEntityBasePathFromProductPath(self, filepath):
+        basePath = os.path.join(
+            filepath, os.pardir, os.pardir, os.pardir, os.pardir, os.pardir
+        )
+
+        return os.path.abspath(basePath)
+
+    @err_catcher(name=__name__)
     def getEntityPath(self, entity=None, asset=None, sequence=None, shot=None, step=None, category=None):
         if asset:
             if os.path.isabs(asset):
@@ -383,6 +391,7 @@ class PathManager(object):
         if not os.path.exists(cacheConfig):
             cacheConfig = os.path.join(os.path.dirname(cacheDir), "versioninfo.yml")
         cacheData = self.core.getConfig(configPath=cacheConfig) or {}
+        cacheData["unit"] = os.path.basename(cacheDir)
 
         taskPath = os.path.dirname(os.path.dirname(cacheDir))
         cacheData["task"] = os.path.basename(taskPath)
@@ -396,12 +405,14 @@ class PathManager(object):
             cacheData["assetHierarchy"] = self.core.entities.getAssetRelPathFromPath(entityPath)
             cacheData["assetName"] = os.path.basename(cacheData["assetHierarchy"])
             cacheData["entity"] = cacheData["assetName"]
+            cacheData["fullEntity"] = cacheData["assetHierarchy"]
         elif relShotPath in entityPath:
             cacheData["entityType"] = "shot"
             shot, seq = self.core.entities.splitShotname(os.path.basename(entityPath))
             cacheData["sequence"] = seq
             cacheData["shot"] = shot
             cacheData["entity"] = cacheData["shot"]
+            cacheData["fullEntity"] = self.core.entities.getShotname(cacheData["sequence"], cacheData["shot"])
         else:
             cacheData["entityType"] = ""
 

@@ -32,6 +32,9 @@
 
 
 import os
+import logging
+import shutil
+import platform
 
 try:
     from PySide2.QtCore import *
@@ -44,6 +47,9 @@ except:
     psVersion = 1
 
 from PrismUtils.Decorators import err_catcher
+
+
+logger = logging.getLogger(__name__)
 
 
 class Products(object):
@@ -89,6 +95,20 @@ class Products(object):
         return os.path.join(path, "Export")
 
     @err_catcher(name=__name__)
+    def getLocationPathFromLocation(self, location):
+        locDict = self.core.getExportPaths()
+        if location in locDict:
+            return locDict[location]
+
+    @err_catcher(name=__name__)
+    def getLocationFromFilepath(self, path):
+        locDict = self.core.getExportPaths()
+        nPath = os.path.normpath(path)
+        for location in locDict:
+            if nPath.startswith(locDict[location]):
+                return location
+
+    @err_catcher(name=__name__)
     def getVersionsFromPaths(self, paths):
         versions = {}
         for path in paths:
@@ -102,13 +122,29 @@ class Products(object):
         return versions
 
     @err_catcher(name=__name__)
+    def getVersionFolderFromProductPath(self, path):
+        versionFolder = ""
+        versionDir = os.path.dirname(path)
+        if os.path.basename(versionDir) in ["centimeter", "meter"]:
+            versionDir = os.path.dirname(versionDir)
+
+        versionName = self.getVersionNameFromFilepath(path)
+
+        if versionName:
+            versionFolder = os.path.dirname(versionDir)
+
+        return versionFolder
+
+    @err_catcher(name=__name__)
     def getVersionsFromPath(self, path):
         versions = {}
         versionPaths = []
         for root, folders, files in os.walk(path):
             for folder in folders:
                 nameData = folder.split(self.core.filenameSeparator)
-                if not (len(nameData) == 3 and folder[0] == "v"):
+                isVersion = len(nameData) == 3 and folder[0] == "v"
+                isMaster = folder == "master"
+                if not isVersion and not isMaster:
                     continue
 
                 versionPath = os.path.join(root, folder)
@@ -171,11 +207,11 @@ class Products(object):
         fileversion = None
         for data in fileData:
             try:
-                int(data[1:])
+                num = int(data[1:])
             except:
                 num = None
 
-            if len(data) == 5 and data[0] == "v" and num:
+            if len(data) == (self.core.versionPadding+1) and data[0] == "v" and num:
                 try:
                     fileversion = data
                     break
@@ -193,7 +229,7 @@ class Products(object):
         versionName = os.path.basename(versionDir)
         versionData = versionName.split(self.core.filenameSeparator)
         relScenePath = self.core.scenePath.replace(self.core.projectPath, "")
-        if len(versionData) != 3 and relScenePath not in path:
+        if (len(versionData) != 3 and versionName != "master") and relScenePath not in path:
             return None
 
         return versionName
@@ -218,26 +254,40 @@ class Products(object):
         return latestVersion
 
     @err_catcher(name=__name__)
-    def getPreferredFileFromVersion(self, version, preferredUnit=None):
+    def getPreferredFileFromVersion(self, version, preferredUnit=None, location=None):
         preferredUnit = preferredUnit or getattr(self.core.appPlugin, "preferredUnit", "centimeter")
 
-        filepath = None
-        backupFilepath = None
-        for location in version["locations"]:
-            for unit in version["locations"][location]:
-                if unit == preferredUnit:
-                    filepath = version["locations"][location][unit]
-                    return filepath
-                elif not backupFilepath:
-                    backupFilepath = version["locations"][location][unit]
+        if location:
+            locationPath = self.getLocationPathFromLocation(location)
 
-        return backupFilepath
+        filepath = None
+        filepathUnit = None
+        for vlocation in version["locations"]:
+            for unit in version["locations"][vlocation]:
+                if location:
+                    if vlocation.startswith(locationPath) or not filepath:
+                        if unit == preferredUnit or filepathUnit != preferredUnit:
+                            filepath = version["locations"][vlocation][unit]
+                            filepathUnit = unit
+                else:
+                    if unit == preferredUnit or filepathUnit != preferredUnit:
+                        filepath = version["locations"][vlocation][unit]
+                        filepathUnit = unit
+
+        return filepath
 
     @err_catcher(name=__name__)
-    def getUnitsFromVersion(self, version, short=False):
+    def getUnitsFromVersion(self, version, short=False, location=None):
         units = []
-        for location in version["locations"]:
-            for unit in version["locations"][location]:
+
+        if location:
+            locationPath = self.getLocationPathFromLocation(location)
+
+        for vlocation in version["locations"]:
+            if location and not vlocation.startswith(locationPath):
+                continue
+
+            for unit in version["locations"][vlocation]:
                 if short:
                     if unit == "centimeter":
                         unit = "cm"
@@ -250,3 +300,142 @@ class Products(object):
                 units.append(unit)
 
         return sorted(units)
+
+    @err_catcher(name=__name__)
+    def getProductPathFromEntity(self, entity, entityName, task):
+        if entity == "asset":
+            entityPath = os.path.join(self.core.assetPath, entityName)
+        elif entity == "shot":
+            entityPath = os.path.join(self.core.shotPath, entityName)
+
+        productPath = os.path.join(entityPath, "Export", task)
+        return productPath
+
+    @err_catcher(name=__name__)
+    def generateProductPath(self, entity, entityName, task, extension, startframe=None, endframe=None, comment=None, user=None, version=None, unit=None, location="global"):
+        prefUnit = unit or self.core.appPlugin.preferredUnit
+
+        if startframe == endframe or extension != ".obj":
+            framePadding = ""
+        else:
+            framePadding = ".####"
+
+        versionUser = user or self.core.user
+        hVersion = ""
+        if version is not None and version != "master":
+            versionData = version.split(self.core.filenameSeparator)
+            if len(versionData) == 3:
+                hVersion, pComment, versionUser = versionData
+
+        outputPath = self.getProductPathFromEntity(entity, entityName, task)
+
+        if hVersion == "":
+            hVersion = self.core.getHighestTaskVersion(outputPath)
+            pComment = comment or ""
+
+        if version == "master":
+            versionFoldername = "master"
+            hVersion = "master"
+        else:
+            versionFoldername = (
+                hVersion
+                + self.core.filenameSeparator
+                + pComment
+                + self.core.filenameSeparator
+                + versionUser
+            )
+
+        outputPath = os.path.join(outputPath, versionFoldername, prefUnit)
+        filename = self.generateProductFilename(entity, entityName, task, hVersion, framePadding, extension)
+        outputName = os.path.join(outputPath, filename)
+
+        basePath = self.core.getExportPaths()[location]
+        prjPath = os.path.normpath(self.core.projectPath)
+        basePath = os.path.normpath(basePath)
+        outputName = outputName.replace(prjPath, basePath)
+        return outputName
+
+    @err_catcher(name=__name__)
+    def generateProductFilename(self, entity, entityName, task, version, framePadding, extension):
+        if entity == "asset":
+            outputName = (
+                os.path.basename(entityName)
+                + self.core.filenameSeparator
+                + task
+                + self.core.filenameSeparator
+                + version
+                + framePadding
+                + extension
+            )
+        elif entity == "shot":
+            outputName = (
+                "shot"
+                + self.core.filenameSeparator
+                + entityName
+                + self.core.filenameSeparator
+                + task
+                + self.core.filenameSeparator
+                + version
+                + framePadding
+                + extension
+            )
+
+        return outputName
+
+    @err_catcher(name=__name__)
+    def updateMasterVersion(self, path):
+        data = self.core.paths.getCachePathData(path)
+
+        if data["entityType"] == "asset":
+            assetPath = self.core.paths.getEntityBasePathFromProductPath(path)
+            entityName = self.core.entities.getAssetRelPathFromPath(assetPath)
+        else:
+            entityName = self.core.entities.getShotname(data["sequence"], data["shot"])
+
+        location = self.getLocationFromFilepath(path)
+
+        masterPath = self.generateProductPath(
+            entity=data["entityType"],
+            entityName=entityName,
+            task=data["task"],
+            extension=data["extension"],
+            version="master",
+            unit=data["unit"],
+            location=location,
+        )
+        logger.debug("updating master version: %s" % masterPath)
+
+        self.deleteMasterVersion(masterPath)
+        if not os.path.exists(os.path.dirname(masterPath)):
+            os.makedirs(os.path.dirname(masterPath))
+
+        masterDrive = os.path.splitdrive(masterPath)
+        drive = os.path.splitdrive(path)
+
+        seqFiles = self.core.detectFileSequence(path)
+        for seqFile in seqFiles:
+            if len(seqFiles) > 1:
+                frameStr = "." + os.path.splitext(seqFile)[0][-self.core.framePadding:]
+                base, ext = os.path.splitext(masterPath)
+                masterPathPadded = base + frameStr + ext
+            else:
+                masterPathPadded = masterPath
+
+            if platform.system() == "Windows" and drive == masterDrive:
+                self.core.createSymlink(masterPathPadded, seqFile)
+            else:
+                shutil.copy2(seqFile, masterPathPadded)
+
+        ext = self.core.configs.preferredExtension
+        infoPath = os.path.join(os.path.dirname(os.path.dirname(path)), "versioninfo" + ext)
+        masterInfoPath = os.path.join(os.path.dirname(os.path.dirname(masterPath)), "versioninfo" + ext)
+        self.core.createSymlink(masterInfoPath, infoPath)
+        self.core.setConfig("filename", val=path, configPath=masterInfoPath)
+        return masterPath
+
+    @err_catcher(name=__name__)
+    def deleteMasterVersion(self, path):
+        masterFolder = os.path.dirname(os.path.dirname(path))
+        if os.path.exists(masterFolder):
+            shutil.rmtree(masterFolder)
+            return True

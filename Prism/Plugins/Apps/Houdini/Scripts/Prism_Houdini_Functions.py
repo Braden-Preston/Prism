@@ -47,6 +47,19 @@ except:
 
 import hou
 
+try:
+    del sys.modules["Prism_Houdini_Node_ImportFile"]
+except:
+    pass
+
+try:
+    del sys.modules["Prism_Houdini_Node_Filecache"]
+except:
+    pass
+
+import Prism_Houdini_Node_Filecache
+import Prism_Houdini_Node_ImportFile
+
 from PrismUtils.Decorators import err_catcher as err_catcher
 
 
@@ -68,6 +81,9 @@ class Prism_Houdini_Functions(object):
             ".otlnc",
             ".otllc",
         ]
+        self.ropLocation = "/out"
+        self.filecache = Prism_Houdini_Node_Filecache.Prism_Houdini_Filecache(self.plugin)
+        self.importFile = Prism_Houdini_Node_ImportFile.Prism_Houdini_ImportFile(self.plugin)
         self.callbacks = []
         self.registerCallbacks()
 
@@ -337,7 +353,6 @@ class Prism_Houdini_Functions(object):
                 )
             except hou.OperationFailed as e:
                 msg = e.instanceMessage()
-                print(msg)
                 if msg.startswith("The selected subnet has references to nodes"):
                     msg = "Canceled HDA creation.\n\n" + msg + "\n\nYou can enable \"Allow external references\" in the state settings to ignore this warning."
                 self.core.popup(msg)
@@ -1118,6 +1133,14 @@ class Prism_Houdini_Functions(object):
             ):
                 continue
 
+            if (
+                x[0] is not None
+                and x[0].name() in ["default_image_filename", "default_export_nsi_filename"]
+                and x[0].node().type().name()
+                in ["3Delight"]
+            ):
+                continue
+
             extFiles.append(hou.expandString(x[1]).replace("\\", "/"))
             extFilesSource.append(x[0])
 
@@ -1198,7 +1221,7 @@ class Prism_Houdini_Functions(object):
         return parmStr
 
     @err_catcher(name=__name__)
-    def sm_openStateFromNode(self, origin):
+    def sm_openStateFromNode(self, origin, menu):
         renderers = self.getRendererPlugins()
         if len(hou.selectedNodes()) > 0:
             for i in renderers:
@@ -1206,7 +1229,7 @@ class Prism_Houdini_Functions(object):
                     origin.createPressed("Render")
                     return
 
-        nodeMenu = QMenu(origin)
+        nodeMenu = QMenu("From node", origin)
 
         renderMenu = QMenu("ImageRender", origin)
 
@@ -1274,10 +1297,8 @@ class Prism_Houdini_Functions(object):
         if not ropMenu.isEmpty():
             nodeMenu.addMenu(ropMenu)
 
-        if nodeMenu.isEmpty():
-            self.core.popup("No unconnected ROPs exist in scene.")
-        else:
-            nodeMenu.exec_(QCursor.pos())
+        if not nodeMenu.isEmpty():
+            menu.addMenu(nodeMenu)
 
     @err_catcher(name=__name__)
     def sm_render_getDeadlineParams(self, origin, dlParams, homeDir):
@@ -1439,3 +1460,56 @@ class Prism_Houdini_Functions(object):
         rcMenu.addAction(mAct)
 
         rcMenu.exec_(QCursor.pos())
+
+    @err_catcher(name=__name__)
+    def createRop(self, nodeType):
+        node = hou.node(self.ropLocation).createNode(nodeType)
+        return node
+
+    @err_catcher(name=__name__)
+    def getStateFromNode(self, kwargs):
+        sm = self.core.getStateManager()
+        knode = kwargs["node"]
+
+        for state in sm.states:
+            node = getattr(state.ui, "node", None)
+            if not self.isNodeValid(None, node):
+                node = None
+
+            if node and node.path() == knode.path():
+                return state
+
+        state = self.createStateForNode(kwargs)
+        return state
+
+    @err_catcher(name=__name__)
+    def showInStateManagerFromNode(self, kwargs):
+        sm = self.core.getStateManager()
+        if not sm.isVisible():
+            sm.show()
+
+        state = self.getStateFromNode(kwargs)
+        sm.selectState(state)
+
+    @err_catcher(name=__name__)
+    def openInExplorerFromNode(self, kwargs):
+        path = kwargs["node"].parm("filepath").eval()
+        self.core.openFolder(path)
+
+    @err_catcher(name=__name__)
+    def onNodeCreated(self, kwargs):
+        self.createStateForNode(kwargs)
+
+        if kwargs["node"].type().name().startswith("prism::ImportFile"):
+            kwargs["node"].setColor(hou.Color(0.451, 0.369, 0.796))
+
+    @err_catcher(name=__name__)
+    def createStateForNode(self, kwargs):
+        sm = self.core.getStateManager()
+
+        if kwargs["node"].type().name().startswith("prism::ImportFile"):
+            state = sm.createState("ImportFile", node=kwargs["node"], setActive=True, openProductsBrowser=False)
+        elif kwargs["node"].type().name().startswith("prism::Filecache"):
+            state = sm.createState("Export", node=kwargs["node"], setActive=True)
+
+        return state

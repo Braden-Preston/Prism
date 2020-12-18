@@ -565,16 +565,12 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         except:
             pass
 
-        rPrjPaths = cData.get("recent_projects", [])
-        for prjPath in rPrjPaths:
-            if not prjPath or not self.core.isStr(prjPath) or prjPath == self.core.prismIni:
-                continue
+        recentProjects = self.core.projects.getRecentProjects()
+        for project in recentProjects:
+            rpAct = QAction(project["name"], self)
+            rpAct.setToolTip(project["configPath"])
 
-            rpName = self.core.getConfig("globals", "project_name", configPath=prjPath)
-            rpAct = QAction(rpName, self)
-            rpAct.setToolTip(prjPath)
-
-            rpAct.triggered.connect(lambda y=None, x=prjPath: self.core.changeProject(x))
+            rpAct.triggered.connect(lambda y=None, x=project["configPath"]: self.core.changeProject(x))
             self.menuRecentProjects.addAction(rpAct)
 
         if self.menuRecentProjects.isEmpty():
@@ -734,6 +730,13 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         self.tw_sFiles.dragMoveEvent = lambda x: self.sceneDragMoveEvent(x, self.tw_sFiles)
         self.tw_sFiles.dragLeaveEvent = lambda x: self.sceneDragLeaveEvent(x, self.tw_sFiles)
         self.tw_sFiles.dropEvent = lambda x: self.sceneDropEvent(x, "shot", self.tw_sFiles)
+
+    @err_catcher(name=__name__)
+    def addTab(self, name, widget, showRenderings=False):
+        widget.setProperty("tabType", name)
+        self.tabLabels[name] = name
+        self.tbw_browser.insertTab(-1, widget, self.tabLabels[name])
+        self.tabOrder[name] = {"order": self.tbw_browser.count(), "showRenderings": showRenderings}
 
     @err_catcher(name=__name__)
     def closeEvent(self, event):
@@ -5253,7 +5256,7 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
             return
         elif (event.buttons() != Qt.LeftButton and element != self.cb_layer) or (
             event.buttons() == Qt.LeftButton and (event.modifiers() & Qt.ShiftModifier)
-        ):
+        ) and element != mediaPlayback["l_preview"]:
             element.mmEvent(event)
             return
         elif element == self.cb_layer and event.buttons() != Qt.MiddleButton:
