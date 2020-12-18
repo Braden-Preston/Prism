@@ -259,6 +259,10 @@ class ExportClass(object):
         self.state.setText(0, sText)
 
     @err_catcher(name=__name__)
+    def getOutputType(self):
+        return self.cb_outType.currentText()
+
+    @err_catcher(name=__name__)
     def getTaskname(self):
         taskName = self.l_taskName.text()
         return taskName
@@ -584,12 +588,7 @@ class ExportClass(object):
             else:
                 fileNum = ".####"
 
-            if self.core.useLocalFiles and fileName.startswith(
-                self.core.localProjectPath
-            ):
-                fileName = fileName.replace(
-                    self.core.localProjectPath, self.core.projectPath
-                )
+            fileName = self.core.convertPath(fileName, "global")
 
             versionUser = self.core.user
             hVersion = ""
@@ -852,6 +851,10 @@ class ExportClass(object):
                     self.state.text(0)
                     + " - unknown error (view console for more information)"
                 ]
+
+            useMaster = self.core.getConfig("globals", "useMasterVersion", dft=False, config="project")
+            if useMaster:
+                self.core.products.updateMasterVersion(outputName)
 
             kwargs = {
                 "state": self,

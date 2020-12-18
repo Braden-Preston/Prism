@@ -1,3 +1,15 @@
+v1.3.0.55:
+- fixed a bug that the "Select Task" dialog stayed open after importing a cache in some cases
+
+v1.3.0.54:
+- added a new feature to use master export versions to the project settings (beta)
+- fixed a problem that caused that VRay renders/aovs in Maya were not written to disk when the pathlength was close but not above 259 characters
+- fixed an error when shift+dragging the render preview in the Project Browser
+
+v1.3.0.53:
+- added support for the latest 3Delight version in Houdini (2.3.2)
+- fixed an error when exporting objects in Blender
+
 v1.3.0.52:
 - added the option to enable/disable the additional local project folder for the current user in the Prism Settings. This can override the setting in the project settings with the same name
 - added support for the Nuke Indie fileextension (.nkind)
