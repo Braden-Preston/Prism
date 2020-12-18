@@ -114,12 +114,12 @@ class Updater(object):
     @err_catcher(name=__name__)
     def checkForUpdates(self, silent=False):
         logger.debug("checking for updates")
-        url = "https://raw.githubusercontent.com/Braden-Preston/Prism/develop/Prism/Scripts/PrismCore.py"
+        url = "https://raw.githubusercontent.com/Braden-Preston/Prism/master/Prism/Scripts/PrismCore.py"
         result = self.getPrismVersionFromGithub(url)
 
         if not result:
             if not silent:
-                msg = "Unable to read https://raw.githubusercontent.com/Braden-Preston/Prism/develop/Prism/Scripts/PrismCore.py. Could not check for updates."
+                msg = "Unable to read https://raw.githubusercontent.com/Braden-Preston/Prism/master/Prism/Scripts/PrismCore.py. Could not check for updates."
                 self.core.popup(msg)
             self.core.setConfig(
                 cat="globals",
@@ -597,7 +597,7 @@ try:
         sys.path.insert(0, pyLibs)
 
     import requests
-    page = requests.get('https://raw.githubusercontent.com/Braden-Preston/Prism/develop/changelog.txt', verify=False)
+    page = requests.get('https://raw.githubusercontent.com/Braden-Preston/Prism/master/changelog.txt', verify=False)
 
     sys.stdout.write(page.content.decode("utf-8"))
 
@@ -623,7 +623,7 @@ except Exception as e:
 
         if str(stdOutData).startswith("failed"):
             if not silent and self.showChangelogWarnOnError:
-                msg = "Unable to read https://raw.githubusercontent.com/Braden-Preston/Prism/develop/changelog.txt. Could not get changelog.\n\n(%s)" % stdOutData
+                msg = "Unable to read https://raw.githubusercontent.com/Braden-Preston/Prism/master/changelog.txt. Could not get changelog.\n\n(%s)" % stdOutData
                 self.core.popup(msg)
             return
 
