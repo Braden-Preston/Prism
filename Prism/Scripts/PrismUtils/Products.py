@@ -33,6 +33,8 @@
 
 import os
 import logging
+import shutil
+import platform
 
 try:
     from PySide2.QtCore import *
@@ -91,6 +93,19 @@ class Products(object):
     @err_catcher(name=__name__)
     def getProductPathFromEntityPath(self, path):
         return os.path.join(path, "Export")
+
+    @err_catcher(name=__name__)
+    def getLocationPathFromLocation(self, location):
+        locDict = self.core.getExportPaths()
+        if location in locDict:
+            return locDict[location]
+
+    @err_catcher(name=__name__)
+    def getLocationFromFilepath(self, path):
+        locDict = self.core.getExportPaths()
+        for location in locDict:
+            if path.startswith(locDict[location]):
+                return location
 
     @err_catcher(name=__name__)
     def getVersionsFromPaths(self, paths):
@@ -238,26 +253,40 @@ class Products(object):
         return latestVersion
 
     @err_catcher(name=__name__)
-    def getPreferredFileFromVersion(self, version, preferredUnit=None):
+    def getPreferredFileFromVersion(self, version, preferredUnit=None, location=None):
         preferredUnit = preferredUnit or getattr(self.core.appPlugin, "preferredUnit", "centimeter")
 
-        filepath = None
-        backupFilepath = None
-        for location in version["locations"]:
-            for unit in version["locations"][location]:
-                if unit == preferredUnit:
-                    filepath = version["locations"][location][unit]
-                    return filepath
-                elif not backupFilepath:
-                    backupFilepath = version["locations"][location][unit]
+        if location:
+            locationPath = self.getLocationPathFromLocation(location)
 
-        return backupFilepath
+        filepath = None
+        filepathUnit = None
+        for vlocation in version["locations"]:
+            for unit in version["locations"][vlocation]:
+                if location:
+                    if vlocation.startswith(locationPath) or not filepath:
+                        if unit == preferredUnit or filepathUnit != preferredUnit:
+                            filepath = version["locations"][vlocation][unit]
+                            filepathUnit = unit
+                else:
+                    if unit == preferredUnit or filepathUnit != preferredUnit:
+                        filepath = version["locations"][vlocation][unit]
+                        filepathUnit = unit
+
+        return filepath
 
     @err_catcher(name=__name__)
-    def getUnitsFromVersion(self, version, short=False):
+    def getUnitsFromVersion(self, version, short=False, location=None):
         units = []
-        for location in version["locations"]:
-            for unit in version["locations"][location]:
+
+        if location:
+            locationPath = self.getLocationPathFromLocation(location)
+
+        for vlocation in version["locations"]:
+            if location and not vlocation.startswith(locationPath):
+                continue
+
+            for unit in version["locations"][vlocation]:
                 if short:
                     if unit == "centimeter":
                         unit = "cm"
@@ -362,22 +391,50 @@ class Products(object):
         else:
             entityName = data["entity"]
 
+        location = self.getLocationFromFilepath(path)
+
         masterPath = self.generateProductPath(
             entity=data["entityType"],
             entityName=entityName,
             task=data["task"],
             extension=data["extension"],
-            version="master"
+            version="master",
+            unit=data["unit"],
+            location=location,
         )
         logger.debug("updating master version: %s" % masterPath)
 
+        self.deleteMasterVersion(masterPath)
         if not os.path.exists(os.path.dirname(masterPath)):
             os.makedirs(os.path.dirname(masterPath))
 
-        self.core.createSymlink(masterPath, path)
+        masterDrive = os.path.splitdrive(masterPath)
+        drive = os.path.splitdrive(path)
+
+        seqFiles = self.core.detectFileSequence(path)
+        for seqFile in seqFiles:
+            if len(seqFiles) > 1:
+                frameStr = "." + os.path.splitext(seqFile)[0][-self.core.framePadding:]
+                base, ext = os.path.splitext(masterPath)
+                masterPathPadded = base + frameStr + ext
+            else:
+                masterPathPadded = masterPath
+
+            if platform.system() == "Windows" and drive == masterDrive:
+                self.core.createSymlink(masterPathPadded, seqFile)
+            else:
+                shutil.copy2(seqFile, masterPathPadded)
 
         ext = self.core.configs.preferredExtension
         infoPath = os.path.join(os.path.dirname(os.path.dirname(path)), "versioninfo" + ext)
         masterInfoPath = os.path.join(os.path.dirname(os.path.dirname(masterPath)), "versioninfo" + ext)
         self.core.createSymlink(masterInfoPath, infoPath)
+        self.core.setConfig("filename", val=path, configPath=masterInfoPath)
         return masterPath
+
+    @err_catcher(name=__name__)
+    def deleteMasterVersion(self, path):
+        masterFolder = os.path.dirname(os.path.dirname(path))
+        if os.path.exists(masterFolder):
+            shutil.rmtree(masterFolder)
+            return True

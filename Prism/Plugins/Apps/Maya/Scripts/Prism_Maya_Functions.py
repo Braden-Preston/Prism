@@ -763,7 +763,7 @@ class Prism_Maya_Functions(object):
                     )
                 )
 
-                if not origin.chb_exportNamespaces.isChecked():
+                if origin.chb_exportNamespaces.isChecked():
                     expStr = expStr.replace("-stripNamespaces", "")
 
                 cmd = {"export_cmd": expStr}
@@ -1880,7 +1880,7 @@ tabLayout -e -sti %s $tabLayout;""" % tabNum
         return warnings
 
     @err_catcher(name=__name__)
-    def sm_render_fixOutputPath(self, origin, outputName):
+    def sm_render_fixOutputPath(self, origin, outputName, singleFrame=False):
         curRender = self.getCurrentRenderer(origin)
 
         if curRender == "vray":
